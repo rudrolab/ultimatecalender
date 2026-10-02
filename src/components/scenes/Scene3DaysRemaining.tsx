@@ -6,30 +6,22 @@ import { DIGIT_PATHS } from '../../utils/digitPaths';
 interface Scene3Props {
   stats: YearStats;
   countdown: CountdownTime;
-  scrollT?: number; // 0 to 1
-}
-
-interface DotPosition {
-  id: number;
-  startX: number;
-  startY: number;
-  targetX: number;
-  targetY: number;
+  scrollT?: number; // 0 to 1 continuous scrub
 }
 
 export const Scene3DaysRemaining: React.FC<Scene3Props> = ({ stats, scrollT }) => {
   const daysLeft = stats.daysRemaining;
   const digits = String(daysLeft).split('');
 
-  // Dimensions for SVG canvas
-  const digitWidth = 100;
-  const digitHeight = 160;
-  const digitSpacing = 28;
+  // Dimensions for SVG canvas scaled for full viewport
+  const digitWidth = 140;
+  const digitHeight = 220;
+  const digitSpacing = 36;
   const totalDigitsWidth = digits.length * digitWidth + (digits.length - 1) * digitSpacing;
-  const svgWidth = totalDigitsWidth + 80;
-  const svgHeight = digitHeight + 40;
+  const svgWidth = totalDigitsWidth + 120;
+  const svgHeight = digitHeight + 60;
   const offsetX = (svgWidth - totalDigitsWidth) / 2;
-  const offsetY = 20;
+  const offsetY = 30;
 
   // Calculate paths and sample equidistant dot points
   const { pathsWithOffset, sampledDots } = useMemo(() => {
@@ -67,9 +59,13 @@ export const Scene3DaysRemaining: React.FC<Scene3Props> = ({ stats, scrollT }) =
           if (targetDist <= accumulated + item.len || item === pathLengths[pathLengths.length - 1]) {
             const distOnSegment = Math.max(0, Math.min(item.len, targetDist - accumulated));
             const pt = item.pathEl.getPointAtLength(distOnSegment);
+            // Scale point from 100x160 viewBox to 140x220
+            const scaledX = (pt.x / 100) * digitWidth;
+            const scaledY = (pt.y / 160) * digitHeight;
+
             dots.push({
-              targetX: item.digitX + pt.x,
-              targetY: offsetY + pt.y,
+              targetX: item.digitX + scaledX,
+              targetY: offsetY + scaledY,
             });
             break;
           }
@@ -92,7 +88,7 @@ export const Scene3DaysRemaining: React.FC<Scene3Props> = ({ stats, scrollT }) =
 
     setInternalProgress(0);
     const startTime = performance.now();
-    const duration = 1200; // ms
+    const duration = 1200;
 
     let animId: number;
     const tick = (now: number) => {
@@ -117,11 +113,10 @@ export const Scene3DaysRemaining: React.FC<Scene3Props> = ({ stats, scrollT }) =
   // Generate initial scattered/calendar starting positions for each dot
   const dotsWithAnimation = useMemo(() => {
     return sampledDots.map((dot, idx) => {
-      // Deterministic pseudo-random calendar start position
       const angle = (idx / daysLeft) * Math.PI * 2;
-      const radius = 90 + ((idx * 17) % 80);
+      const radius = 140 + ((idx * 23) % 120);
       const startX = svgWidth / 2 + Math.cos(angle) * radius;
-      const startY = svgHeight / 2 + Math.sin(angle) * (radius * 0.6) - 30;
+      const startY = svgHeight / 2 + Math.sin(angle) * (radius * 0.6) - 40;
 
       const currentX = startX + (dot.targetX - startX) * effectiveProgress;
       const currentY = startY + (dot.targetY - startY) * effectiveProgress;
@@ -134,54 +129,27 @@ export const Scene3DaysRemaining: React.FC<Scene3Props> = ({ stats, scrollT }) =
     });
   }, [sampledDots, effectiveProgress, daysLeft, svgWidth, svgHeight]);
 
-  // Date range formatted: e.g. "OCT 02 - DEC 31"
   const startMonthShort = stats.currentMonthName.substring(0, 3).toUpperCase();
   const startDayPad = String(new Date().getDate()).padStart(2, '0');
   const dateRangeStr = `${startMonthShort} ${startDayPad} - DEC 31`;
 
-  const progressFraction = Math.min(Math.max(stats.daysPassed / stats.totalDays, 0), 1);
-
   return (
-    <div className="w-full h-full flex flex-col justify-between py-6 px-6 sm:px-10 select-none bg-[#090a0f] text-white">
-      {/* 1. Top Bar with Thin Timeline & Ticks (matching reference image) */}
-      <div className="w-full flex flex-col pt-1">
-        <div className="flex justify-between items-center text-[11px] font-mono text-zinc-500 tracking-widest uppercase mb-1">
-          <span>{stats.year}</span>
-          <span>{stats.daysPassed}/{stats.totalDays}</span>
-        </div>
-
-        {/* Timeline bar with quarter ticks and glowing red position dot */}
-        <div className="w-full h-3 relative flex items-center">
-          <div className="w-full h-[1px] bg-zinc-800 relative">
-            {/* End caps */}
-            <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[1px] h-2 bg-zinc-700" />
-            <div className="absolute right-0 top-1/2 -translate-y-1/2 w-[1px] h-2 bg-zinc-700" />
-            {/* Quarter ticks */}
-            <div className="absolute left-1/4 top-1/2 -translate-y-1/2 w-[1px] h-1.5 bg-zinc-800" />
-            <div className="absolute left-2/4 top-1/2 -translate-y-1/2 w-[1px] h-1.5 bg-zinc-800" />
-            <div className="absolute left-3/4 top-1/2 -translate-y-1/2 w-[1px] h-1.5 bg-zinc-800" />
-
-            {/* Glowing Red Current Position Dot */}
-            <div
-              className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-2 h-2 rounded-full bg-[#ff3344] shadow-[0_0_8px_#ff3344] transition-all duration-300"
-              style={{ left: `${progressFraction * 100}%` }}
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* 2. Header text: "YOU HAVE" */}
-      <div className="text-center mt-4">
-        <h2 className="text-sm sm:text-base font-display font-semibold tracking-[0.3em] uppercase text-zinc-200">
+    <div className="w-full h-full flex flex-col justify-between py-6 px-6 sm:px-12 md:px-20 select-none bg-transparent text-white">
+      {/* 1. Header: "YOU HAVE" */}
+      <div className="text-center pt-2 sm:pt-4">
+        <h2 className="text-lg sm:text-2xl font-tech font-bold tracking-[0.35em] uppercase text-zinc-200 glow-white">
           YOU HAVE
         </h2>
       </div>
 
-      {/* 3. The Number Composed of Perfectly Aligned Dots with Silhouette Track */}
-      <div className="my-auto flex items-center justify-center w-full">
+      {/* 2. Monumental Number Composed of Perfectly Aligned Dots with Silhouette Track */}
+      <div className="my-auto flex items-center justify-center w-full relative">
+        {/* Soft atmospheric ambient glow */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[450px] h-[300px] bg-red-500/10 blur-[90px] rounded-full pointer-events-none -z-10" />
+
         <svg
           viewBox={`0 0 ${svgWidth} ${svgHeight}`}
-          className="w-full max-w-[340px] sm:max-w-[400px] overflow-visible"
+          className="w-full max-w-[460px] sm:max-w-[560px] md:max-w-[640px] overflow-visible"
         >
           {/* A. Dark Charcoal Track Silhouette (Underneath) */}
           <g>
@@ -193,10 +161,10 @@ export const Scene3DaysRemaining: React.FC<Scene3Props> = ({ stats, scrollT }) =
                 <path
                   key={`bg-${idx}-${pIdx}`}
                   d={d}
-                  transform={`translate(${digitX}, ${offsetY})`}
+                  transform={`translate(${digitX}, ${offsetY}) scale(${digitWidth / 100}, ${digitHeight / 160})`}
                   fill="none"
                   stroke="#161822"
-                  strokeWidth="24"
+                  strokeWidth="28"
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   className="transition-opacity duration-500"
@@ -212,11 +180,11 @@ export const Scene3DaysRemaining: React.FC<Scene3Props> = ({ stats, scrollT }) =
                 key={dot.id}
                 cx={dot.x}
                 cy={dot.y}
-                r={3.4}
+                r={4.2}
                 fill="#ffffff"
-                className="transition-transform duration-150"
+                className="transition-transform duration-100"
                 style={{
-                  filter: 'drop-shadow(0 0 3px rgba(255, 255, 255, 0.9))',
+                  filter: 'drop-shadow(0 0 5px rgba(255, 255, 255, 0.95))',
                 }}
               />
             ))}
@@ -224,16 +192,16 @@ export const Scene3DaysRemaining: React.FC<Scene3Props> = ({ stats, scrollT }) =
         </svg>
       </div>
 
-      {/* 4. Bottom Section: "DAYS LEFT ." and "OCT 02 - DEC 31" */}
-      <div className="flex flex-col items-center justify-center text-center pb-3">
-        <div className="flex items-center justify-center space-x-2">
-          <h1 className="text-2xl sm:text-3xl font-display font-bold tracking-[0.25em] text-white uppercase">
+      {/* 3. Bottom Section: "DAYS LEFT ." and "OCT 02 - DEC 31" */}
+      <div className="flex flex-col items-center justify-center text-center pb-4">
+        <div className="flex items-center justify-center space-x-3">
+          <h1 className="text-3xl sm:text-5xl font-tech font-bold tracking-[0.25em] text-white uppercase glow-white">
             DAYS LEFT
           </h1>
-          <span className="w-2.5 h-2.5 rounded-full bg-[#ff3344] shadow-[0_0_10px_#ff3344] inline-block animate-pulse" />
+          <span className="w-3 h-3 sm:w-4 sm:h-4 rounded-full bg-[#ff3344] shadow-[0_0_16px_#ff3344,0_0_30px_rgba(255,51,68,0.9)] inline-block animate-pulse" />
         </div>
 
-        <p className="mt-2 text-xs font-mono tracking-[0.3em] uppercase text-zinc-500 font-medium">
+        <p className="mt-3 text-xs sm:text-sm font-mono tracking-[0.35em] uppercase text-zinc-400 font-medium">
           {dateRangeStr}
         </p>
       </div>

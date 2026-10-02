@@ -5,10 +5,6 @@ interface PhasePerspectiveRunwayProps {
   stats: YearStats;
   subPhase: 0 | 1 | 2 | 3;
   scrollT?: number; // 0 to 1 continuous scrub
-  // 0 = "MOST PEOPLE WILL WAIT FOR JANUARY." with 3D runway
-  // 1 = "DON'T." particle dots, then stream converges into red TODAY dot
-  // 2 = "START" with 2027 JAN 01
-  // 3 = "TODAY." finale
 }
 
 interface Particle {
@@ -40,27 +36,27 @@ export const PhasePerspectiveRunway: React.FC<PhasePerspectiveRunwayProps> = ({ 
     canvas.height = clientH * dpr;
     ctx.scale(dpr, dpr);
 
-    // Vanishing point coordinates
+    // 3D Perspective Coordinates scaled for wide viewports
     const horizonY = clientH * 0.32;
     const centerX = clientW / 2;
-    const runwayBottomY = clientH * 0.88;
-    const runwayTopY = horizonY + 25;
-    const runwayBottomWidth = clientW * 0.78;
-    const runwayTopWidth = clientW * 0.28;
+    const runwayBottomY = clientH * 0.92;
+    const runwayTopY = horizonY + 20;
+    const runwayBottomWidth = Math.min(clientW * 0.85, 780);
+    const runwayTopWidth = Math.min(clientW * 0.28, 260);
 
-    const redDotY = runwayBottomY + 28;
+    const redDotY = runwayBottomY + 22;
     const redDotX = centerX;
 
     // Create particles for "DON'T." if in subPhase 1
     const dontParticles: Particle[] = [];
     if (subPhase === 1) {
-      // Offscreen render to get points of text "DON'T."
       const off = document.createElement('canvas');
       off.width = clientW;
       off.height = clientH;
       const offCtx = off.getContext('2d');
       if (offCtx) {
-        offCtx.font = '800 68px "Chakra Petch", sans-serif';
+        const textFontSize = clientW < 640 ? 76 : 110;
+        offCtx.font = `800 ${textFontSize}px "Chakra Petch", sans-serif`;
         offCtx.fillStyle = '#ffffff';
         offCtx.textAlign = 'center';
         offCtx.textBaseline = 'middle';
@@ -78,9 +74,9 @@ export const PhasePerspectiveRunway: React.FC<PhasePerspectiveRunwayProps> = ({ 
                 y,
                 originX: x,
                 originY: y,
-                targetX: redDotX + (Math.random() - 0.5) * 8,
+                targetX: redDotX + (Math.random() - 0.5) * 12,
                 targetY: redDotY,
-                size: Math.random() * 1.5 + 1.8,
+                size: Math.random() * 1.8 + 2.0,
                 alpha: 1,
               });
             }
@@ -94,20 +90,31 @@ export const PhasePerspectiveRunway: React.FC<PhasePerspectiveRunwayProps> = ({ 
     const render = (now: number) => {
       ctx.clearRect(0, 0, clientW, clientH);
 
-      // If subPhase 3 (TODAY finale), only render dark background, DOM handles the giant text
+      // If subPhase 3 (TODAY finale), DOM renders the monumental typography
       if (subPhase === 3) return;
 
-      // 1. Draw Trapezoidal Perspective Runway Outline
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
-      ctx.lineWidth = 1;
+      // Horizon subtle radial light flare
+      const flareGrad = ctx.createRadialGradient(
+        centerX, horizonY, 5,
+        centerX, horizonY, clientW * 0.5
+      );
+      flareGrad.addColorStop(0, 'rgba(255, 255, 255, 0.08)');
+      flareGrad.addColorStop(0.3, 'rgba(255, 51, 68, 0.03)');
+      flareGrad.addColorStop(1, 'transparent');
+      ctx.fillStyle = flareGrad;
+      ctx.fillRect(0, 0, clientW, clientH);
+
+      // 1. Draw Runway Boundaries
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+      ctx.lineWidth = 1.2;
       ctx.beginPath();
-      // Left boundary
+      // Left edge
       ctx.moveTo(centerX - runwayTopWidth / 2, runwayTopY);
       ctx.lineTo(centerX - runwayBottomWidth / 2, runwayBottomY);
-      // Right boundary
+      // Right edge
       ctx.moveTo(centerX + runwayTopWidth / 2, runwayTopY);
       ctx.lineTo(centerX + runwayBottomWidth / 2, runwayBottomY);
-      // Top line
+      // Horizon line
       ctx.moveTo(centerX - runwayTopWidth / 2, runwayTopY);
       ctx.lineTo(centerX + runwayTopWidth / 2, runwayTopY);
       ctx.stroke();
@@ -115,24 +122,23 @@ export const PhasePerspectiveRunway: React.FC<PhasePerspectiveRunwayProps> = ({ 
       // Horizontal ground line in subPhase 2 (START)
       if (subPhase === 2) {
         ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.moveTo(centerX - runwayTopWidth / 2 - 20, runwayTopY);
-        ctx.lineTo(centerX + runwayTopWidth / 2 + 20, runwayTopY);
+        ctx.moveTo(centerX - runwayTopWidth / 2 - 40, runwayTopY);
+        ctx.lineTo(centerX + runwayTopWidth / 2 + 40, runwayTopY);
         ctx.stroke();
       }
 
-      // 2. Draw 7 columns of perspective rings receding to the horizon
+      // 2. Draw 7 columns of perspective rings receding into the distance
       const numRows = 12;
       const numCols = 7;
 
       for (let r = 0; r < numRows; r++) {
-        // Perspective depth interpolation
         const t = Math.pow(r / (numRows - 1), 2.2);
         const y = runwayTopY + t * (runwayBottomY - runwayTopY);
         const widthAtY = runwayTopWidth + t * (runwayBottomWidth - runwayTopWidth);
-        const ringRadiusX = 3 + t * 7;
-        const ringRadiusY = 1.2 + t * 2.8;
+        const ringRadiusX = 4 + t * 9;
+        const ringRadiusY = 1.6 + t * 3.5;
 
         for (let c = 0; c < numCols; c++) {
           const colT = c / (numCols - 1);
@@ -142,66 +148,58 @@ export const PhasePerspectiveRunway: React.FC<PhasePerspectiveRunwayProps> = ({ 
           ctx.ellipse(x, y, ringRadiusX, ringRadiusY, 0, 0, Math.PI * 2);
 
           if (subPhase === 2 && r >= numRows - 4) {
-            // In START subPhase, foreground dots glow brightly as solid white discs
             ctx.fillStyle = '#ffffff';
             ctx.shadowColor = '#ffffff';
-            ctx.shadowBlur = 8;
+            ctx.shadowBlur = 10;
             ctx.fill();
             ctx.shadowBlur = 0;
           } else {
-            // Hollow rings with soft white glow
-            ctx.strokeStyle = `rgba(255, 255, 255, ${0.3 + t * 0.5})`;
-            ctx.lineWidth = 1 + t * 0.5;
+            ctx.strokeStyle = `rgba(255, 255, 255, ${0.35 + t * 0.55})`;
+            ctx.lineWidth = 1.2 + t * 0.6;
             ctx.stroke();
           }
         }
       }
 
-      // 3. Draw Red TODAY Oval in foreground (except in subPhase 2)
+      // 3. Draw Red TODAY Beacon Oval in foreground (except in subPhase 2)
       if (subPhase !== 2) {
         ctx.beginPath();
-        ctx.ellipse(redDotX, redDotY, 15, 6, 0, 0, Math.PI * 2);
+        ctx.ellipse(redDotX, redDotY, 18, 7, 0, 0, Math.PI * 2);
         ctx.fillStyle = '#ff3344';
         ctx.shadowColor = '#ff3344';
-        ctx.shadowBlur = 18;
+        ctx.shadowBlur = 24;
         ctx.fill();
         ctx.shadowBlur = 0;
       }
 
-      // 4. In subPhase 1: Animate DON'T particles streaming down into the red dot
+      // 4. In subPhase 1: Animate DON'T particles streaming down into the red beacon
       if (subPhase === 1 && dontParticles.length > 0) {
         const elapsed = now - startTime;
-        // Phase 1A: 0-1200ms display DON'T text statically
-        // Phase 1B: 1200-2800ms stream down into red dot
         const streamProgress = scrollT !== undefined ? scrollT : Math.max(0, Math.min((elapsed - 1200) / 1600, 1));
-        const streamEase = Math.pow(streamProgress, 2.8);
 
         dontParticles.forEach((p, idx) => {
           if (streamProgress === 0) {
-            // Static glowing DON'T particle
             ctx.beginPath();
             ctx.arc(p.originX, p.originY, p.size, 0, Math.PI * 2);
             ctx.fillStyle = '#ffffff';
             ctx.shadowColor = '#ffffff';
-            ctx.shadowBlur = 5;
+            ctx.shadowBlur = 6;
             ctx.fill();
           } else {
-            // Streaming particle down to red dot with curve
-            const stagger = (idx % 20) * 0.03;
-            const itemProgress = Math.max(0, Math.min((streamProgress - stagger) / 0.6, 1));
+            const stagger = (idx % 25) * 0.025;
+            const itemProgress = Math.max(0, Math.min((streamProgress - stagger) / 0.65, 1));
             const ease = Math.pow(itemProgress, 2.5);
 
-            const arcOffset = Math.sin(ease * Math.PI) * ((idx % 2 === 0 ? 1 : -1) * 35);
+            const arcOffset = Math.sin(ease * Math.PI) * ((idx % 2 === 0 ? 1 : -1) * 45);
             p.x = p.originX + (p.targetX - p.originX) * ease + arcOffset;
             p.y = p.originY + (p.targetY - p.originY) * ease;
 
-            const alpha = 1 - ease * 0.8;
+            const alpha = 1 - ease * 0.85;
             ctx.beginPath();
             ctx.arc(p.x, p.y, p.size * (1 - ease * 0.4), 0, Math.PI * 2);
-            // Color shifts from white to red near convergence
             ctx.fillStyle = ease > 0.6 ? `rgba(255, 60, 75, ${alpha})` : `rgba(255, 255, 255, ${alpha})`;
             ctx.shadowColor = ease > 0.6 ? '#ff3344' : '#ffffff';
-            ctx.shadowBlur = 6;
+            ctx.shadowBlur = 8;
             ctx.fill();
           }
         });
@@ -214,60 +212,60 @@ export const PhasePerspectiveRunway: React.FC<PhasePerspectiveRunwayProps> = ({ 
     animId = requestAnimationFrame(render);
 
     return () => cancelAnimationFrame(animId);
-  }, [subPhase]);
+  }, [subPhase, scrollT]);
 
   // Subphase 3: TODAY. Finale
   if (subPhase === 3) {
     return (
-      <div className="w-full h-full flex flex-col items-center justify-center select-none bg-[#090a0f] text-white">
-        <div className="flex items-center justify-center space-x-2 animate-scaleUp">
-          <h1 className="text-7xl sm:text-8xl md:text-9xl font-tech font-extrabold tracking-widest text-white uppercase glow-white">
+      <div className="w-full h-full flex flex-col items-center justify-center select-none bg-transparent text-white">
+        <div className="flex items-center justify-center space-x-3 sm:space-x-4 animate-scaleUp">
+          <h1 className="text-8xl sm:text-9xl md:text-[14rem] font-tech font-extrabold tracking-widest text-white uppercase glow-white">
             TODAY
           </h1>
-          <span className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-[#ff3344] shadow-[0_0_24px_#ff3344,0_0_50px_rgba(255,51,68,0.8)] inline-block mt-4 animate-pulse" />
+          <span className="w-6 h-6 sm:w-8 sm:h-8 md:w-12 md:h-12 rounded-full bg-[#ff3344] shadow-[0_0_30px_#ff3344,0_0_70px_rgba(255,51,68,0.9)] inline-block mt-4 sm:mt-6 animate-pulse" />
         </div>
       </div>
     );
   }
 
   return (
-    <div className="w-full h-full flex flex-col justify-between py-2 px-4 sm:px-6 select-none bg-[#090a0f] text-white relative overflow-hidden">
+    <div className="w-full h-full flex flex-col justify-between py-4 px-6 sm:px-12 md:px-20 select-none bg-transparent text-white relative overflow-hidden">
       {/* Top Header Text */}
       <div className="text-center pt-2 sm:pt-4 z-10">
         {subPhase === 0 && (
-          <h1 className="text-xl sm:text-2xl font-tech font-bold tracking-[0.25em] text-white uppercase glow-white">
+          <h1 className="text-2xl sm:text-4xl md:text-5xl font-tech font-bold tracking-[0.25em] text-white uppercase glow-white">
             MOST PEOPLE WILL WAIT FOR JANUARY.
           </h1>
         )}
         {subPhase === 1 && (
-          <h1 className="text-xl sm:text-2xl font-tech font-bold tracking-[0.25em] text-zinc-500 uppercase">
+          <h1 className="text-2xl sm:text-4xl md:text-5xl font-tech font-bold tracking-[0.25em] text-zinc-500 uppercase">
             MOST PEOPLE WILL WAIT FOR JANUARY.
           </h1>
         )}
         {subPhase === 2 && (
-          <h1 className="text-4xl sm:text-5xl font-tech font-extrabold tracking-[0.3em] text-white uppercase glow-white">
+          <h1 className="text-5xl sm:text-7xl md:text-8xl font-tech font-extrabold tracking-[0.3em] text-white uppercase glow-white">
             START
           </h1>
         )}
       </div>
 
       {/* 2027 JAN 01 at the Horizon */}
-      <div className="absolute top-[21%] sm:top-[22%] left-1/2 -translate-x-1/2 flex flex-col items-center justify-center z-10 text-center pointer-events-none">
-        <h2 className="text-3xl sm:text-4xl font-tech font-bold tracking-widest text-white glow-white">
+      <div className="absolute top-[20%] sm:top-[22%] left-1/2 -translate-x-1/2 flex flex-col items-center justify-center z-10 text-center pointer-events-none">
+        <h2 className="text-4xl sm:text-5xl md:text-6xl font-tech font-bold tracking-widest text-white glow-white">
           {nextYear}
         </h2>
-        <span className="text-[10px] font-mono tracking-[0.3em] text-zinc-400 uppercase mt-0.5">
+        <span className="text-xs sm:text-sm font-mono tracking-[0.35em] text-zinc-400 uppercase mt-1">
           JAN 01
         </span>
       </div>
 
-      {/* Canvas for 3D Runway, Rings, and DON'T Particle Stream */}
-      <div className="relative w-full h-[380px] sm:h-[420px] my-auto">
+      {/* Full Canvas for 3D Runway, Rings, and DON'T Particle Stream */}
+      <div className="relative w-full h-[400px] sm:h-[480px] md:h-[540px] my-auto">
         <canvas ref={canvasRef} className="w-full h-full block" />
       </div>
 
-      {/* Bottom context / CTA */}
-      <div className="w-full text-center text-xs font-mono text-zinc-500 border-t border-white/5 pt-3 pb-2 uppercase tracking-widest z-10">
+      {/* Bottom Context */}
+      <div className="w-full text-center text-xs sm:text-sm font-mono text-zinc-400 border-t border-white/10 pt-4 pb-2 uppercase tracking-widest z-10">
         {subPhase === 0 && 'LOOKING AHEAD TO THE NEW HORIZON'}
         {subPhase === 1 && 'TIME DOES NOT WAIT FOR THE CALENDAR'}
         {subPhase === 2 && 'THE REAL START IS RIGHT NOW'}

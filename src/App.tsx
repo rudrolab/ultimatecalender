@@ -4,7 +4,7 @@ import { getCountdownToNewYear, CountdownTime } from './core/countdown';
 import { TopTimelineBar } from './components/TopTimelineBar';
 import { ScrollProgressIndicator } from './components/ScrollProgressIndicator';
 import { InfoModal } from './components/InfoModal';
-import { Play, Pause, ChevronDown, Maximize2, Minimize2, Info, RotateCcw } from 'lucide-react';
+import { Play, Pause, ChevronDown, RotateCcw } from 'lucide-react';
 
 // Phase Components matching the exact reference screenshots
 import { PhaseCalendar } from './components/scenes/PhaseCalendar';
@@ -34,6 +34,9 @@ export const App: React.FC = () => {
   const targetScrollRef = useRef<number>(0);
   const currentScrollRef = useRef<number>(0);
   const scrollVelocityRef = useRef<number>(0);
+
+  // Mouse Parallax 3D Camera tilt
+  const [mouseParallax, setMouseParallax] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
   // Auto-play / Auto-scroll Mode
   const [isAutoPlaying, setIsAutoPlaying] = useState<boolean>(false);
@@ -69,14 +72,25 @@ export const App: React.FC = () => {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
+  // Mouse move listener for 3D camera parallax depth
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      const x = (e.clientX / window.innerWidth - 0.5) * 2; // -1 to 1
+      const y = (e.clientY / window.innerHeight - 0.5) * 2;
+      setMouseParallax({ x, y });
+    };
+
+    window.addEventListener('mousemove', handleMouseMove, { passive: true });
+    return () => window.removeEventListener('mousemove', handleMouseMove);
+  }, []);
+
   // 60FPS Physics Lerp Loop for butter-smooth camera inertia
   useEffect(() => {
     let animId: number;
 
     const lerpLoop = () => {
-      // Auto-play advances target scroll continuously
       if (isAutoPlaying) {
-        targetScrollRef.current = (targetScrollRef.current + 0.0008) % 1;
+        targetScrollRef.current = (targetScrollRef.current + 0.0007) % 1;
         const scrollable = document.documentElement.scrollHeight - window.innerHeight;
         window.scrollTo(0, targetScrollRef.current * scrollable);
       }
@@ -85,7 +99,6 @@ export const App: React.FC = () => {
       scrollVelocityRef.current = diff * 0.12;
       currentScrollRef.current += scrollVelocityRef.current;
 
-      // Keep in bounds
       const clamped = Math.min(Math.max(currentScrollRef.current, 0), 1);
       setScrollProgress(clamped);
 
@@ -121,8 +134,6 @@ export const App: React.FC = () => {
   // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const scrollable = document.documentElement.scrollHeight - window.innerHeight;
-
       if (e.code === 'Space') {
         e.preventDefault();
         handleToggleAutoPlay();
@@ -157,34 +168,42 @@ export const App: React.FC = () => {
     }
   };
 
-  // Subtle 3D dynamic tilt angle based on scroll velocity
-  const tiltX = Math.min(Math.max(scrollVelocityRef.current * 40, -4), 4);
+  // 3D camera tilt combining velocity pitch with subtle mouse parallax
+  const tiltX = Math.min(Math.max(scrollVelocityRef.current * 35 - mouseParallax.y * 2.5, -5), 5);
+  const tiltY = mouseParallax.x * 3.5;
 
   return (
-    <div className="relative bg-[#040508] text-white font-mono selection:bg-[#ff3344] selection:text-white">
-      {/* 1. Extended Virtual Scroll Track (1000vh creates deep, responsive 3D scrolling) */}
+    <div className="relative bg-[#050608] text-white font-mono selection:bg-[#ff3344] selection:text-white min-h-screen">
+      {/* 1. Virtual Scroll Track (1000vh creates deep, responsive 3D scrolling) */}
       <div className="h-[1000vh] w-full pointer-events-none" />
 
-      {/* 2. Fixed Sticky Viewport holding 3D Cinematic Phone Frame */}
-      <div className="fixed inset-0 flex items-center justify-center pointer-events-none z-10 perspective-[1400px] overflow-hidden">
+      {/* 2. Fixed Full-Viewport Immersive 3D Stage (No Phone Frame Borders!) */}
+      <div className="fixed inset-0 w-screen h-screen flex flex-col justify-between overflow-hidden z-10 perspective-[1600px] pointer-events-none">
         
-        {/* Ambient 3D Space Backdrop */}
-        <div className="absolute inset-0 grid-cinematic opacity-25 pointer-events-none" />
-        <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] bg-[#ff3344]/5 rounded-full blur-[160px] pointer-events-none" />
+        {/* Deep Atmospheric Lighting & Horizon Nebula */}
+        <div className="absolute inset-0 grid-cinematic opacity-20 pointer-events-none" />
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[900px] h-[700px] bg-[#ff3344]/[0.04] rounded-full blur-[180px] pointer-events-none" />
+        <div className="absolute bottom-0 left-0 right-0 h-48 bg-gradient-to-t from-[#050608] via-transparent to-transparent pointer-events-none" />
 
-        {/* 9:16 Vertical Cinematic Phone Frame with 3D Depth Dynamics */}
-        <main
+        {/* 3D Camera Stage Wrapper */}
+        <div
           style={{
-            transform: `rotateX(${tiltX}deg) translateZ(0px)`,
-            transition: 'transform 0.1s ease-out',
+            transform: `rotateX(${tiltX}deg) rotateY(${tiltY}deg) translateZ(0px)`,
+            transition: 'transform 0.12s cubic-bezier(0.16, 1, 0.3, 1)',
           }}
-          className="w-full h-full max-w-[480px] max-h-[920px] sm:h-[96vh] sm:rounded-2xl border border-white/10 bg-[#090a0f] flex flex-col justify-between shadow-[0_0_80px_rgba(0,0,0,0.95)] relative overflow-hidden pointer-events-auto z-20"
+          className="w-full h-full flex flex-col justify-between pointer-events-auto z-20"
         >
-          {/* Top Timeline Bar */}
-          <TopTimelineBar stats={stats} isRedDot={currentPhase > 0} />
+          {/* Top Full-Width Timeline Bar */}
+          <TopTimelineBar
+            stats={stats}
+            isRedDot={currentPhase > 0}
+            onOpenInfo={() => setIsInfoOpen(true)}
+            isFullscreen={isFullscreen}
+            onToggleFullscreen={handleToggleFullscreen}
+          />
 
           {/* Dynamic Scene Content Area */}
-          <div className="flex-1 w-full relative overflow-hidden flex flex-col items-center justify-center">
+          <main className="flex-1 w-full relative overflow-hidden flex flex-col items-center justify-center">
             {/* Phase 1: Calendar Overview */}
             {currentPhase === 0 && <PhaseCalendar stats={stats} subPhase={0} />}
 
@@ -243,54 +262,42 @@ export const App: React.FC = () => {
                 subPhase={3}
               />
             )}
-          </div>
+          </main>
 
-          {/* Bottom HUD Bar */}
-          <div className="w-full flex items-center justify-between border-t border-white/5 bg-[#090a0f]/90 px-4 py-2 text-xs font-mono z-30">
-            <div className="flex items-center space-x-2">
+          {/* Minimalist Bottom Sci-Fi HUD */}
+          <footer className="w-full flex items-center justify-between px-6 sm:px-12 md:px-16 py-3 border-t border-white/5 bg-[#050608]/80 backdrop-blur-md text-xs font-mono z-30 select-none">
+            <div className="flex items-center space-x-3">
               <button
                 onClick={handleToggleAutoPlay}
                 title="Toggle Auto-Scroll Playback (Key: SPACE)"
-                className="p-1.5 rounded border border-white/10 hover:border-white/30 text-white transition active:scale-95 flex items-center space-x-1.5"
+                className="py-1 px-3 rounded-full border border-white/10 hover:border-white/30 text-white transition active:scale-95 flex items-center space-x-2 bg-white/[0.03]"
               >
-                {isAutoPlaying ? <Pause size={12} /> : <Play size={12} />}
-                <span className="text-[10px] tracking-wider uppercase">
-                  {isAutoPlaying ? 'PAUSE' : 'AUTO-SCROLL'}
+                {isAutoPlaying ? <Pause size={12} className="text-[#ff3344]" /> : <Play size={12} className="text-white" />}
+                <span className="text-[10px] tracking-widest uppercase">
+                  {isAutoPlaying ? 'PAUSE STORY' : 'AUTO-PLAY'}
                 </span>
               </button>
 
               <button
                 onClick={() => handleJumpToPhase(0)}
                 title="Restart from beginning (Key: R)"
-                className="p-1.5 rounded border border-white/10 hover:border-white/30 text-zinc-400 hover:text-white transition"
+                className="p-1.5 rounded-full border border-white/10 hover:border-white/30 text-zinc-400 hover:text-white transition"
               >
                 <RotateCcw size={12} />
               </button>
             </div>
 
-            <span className="text-[10px] text-zinc-500 font-mono tracking-widest uppercase">
-              PHASE {currentPhase + 1} / {totalPhases}
-            </span>
-
-            <div className="flex items-center space-x-2">
-              <button
-                onClick={() => setIsInfoOpen(true)}
-                title="System Statistics (Key: I)"
-                className="p-1.5 rounded border border-white/10 hover:border-white/30 text-zinc-400 hover:text-white transition"
-              >
-                <Info size={12} />
-              </button>
-
-              <button
-                onClick={handleToggleFullscreen}
-                title="Fullscreen (Key: F11)"
-                className="p-1.5 rounded border border-white/10 hover:border-white/30 text-zinc-400 hover:text-white transition"
-              >
-                {isFullscreen ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
-              </button>
+            <div className="hidden sm:flex items-center space-x-2 text-[10px] text-zinc-400 font-mono tracking-widest uppercase">
+              <span>PHASE {currentPhase + 1} / {totalPhases}</span>
+              <span className="text-zinc-700">·</span>
+              <span className="text-white font-semibold">{PHASE_NAMES[currentPhase]}</span>
             </div>
-          </div>
-        </main>
+
+            <div className="text-[10px] font-mono text-zinc-500 tracking-wider">
+              {stats.currentDateFormatted.toUpperCase()}
+            </div>
+          </footer>
+        </div>
       </div>
 
       {/* 3. 3D Scroll Progress Indicator (Right Sidebar HUD) */}
@@ -303,12 +310,12 @@ export const App: React.FC = () => {
       />
 
       {/* 4. Bottom Scroll Prompt Overlay (Fades as user scrolls) */}
-      {scrollProgress < 0.03 && !isAutoPlaying && (
-        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center space-y-1 pointer-events-none animate-bounce">
-          <span className="text-[10px] font-mono tracking-[0.3em] uppercase text-zinc-400 font-semibold bg-black/60 px-3 py-1 rounded-full border border-white/10 backdrop-blur-md">
-            SCROLL TO TRAVEL THROUGH TIME ↓
+      {scrollProgress < 0.02 && !isAutoPlaying && (
+        <div className="fixed bottom-14 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center space-y-1.5 pointer-events-none animate-bounce">
+          <span className="text-[10px] sm:text-[11px] font-mono tracking-[0.3em] uppercase text-zinc-300 font-semibold bg-black/70 px-4 py-1.5 rounded-full border border-white/10 backdrop-blur-md shadow-2xl">
+            SCROLL TO TRAVEL THROUGH 2026 ↓
           </span>
-          <ChevronDown size={16} className="text-[#ff3344]" />
+          <ChevronDown size={18} className="text-[#ff3344]" />
         </div>
       )}
 
