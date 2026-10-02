@@ -34,6 +34,8 @@ export const App: React.FC = () => {
   const [sceneProgress, setSceneProgress] = useState<number>(0);
   const [isInfoOpen, setIsInfoOpen] = useState<boolean>(false);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+  const [transitionDirection, setTransitionDirection] = useState<'forward' | 'backward'>('forward');
+  const [transitionId, setTransitionId] = useState<number>(0);
 
   const sceneStartTimeRef = useRef<number>(performance.now());
   const touchStartXRef = useRef<number | null>(null);
@@ -63,26 +65,36 @@ export const App: React.FC = () => {
     return () => clearInterval(interval);
   }, [stats.year]);
 
-  // Scene Navigation Handlers
+  // Scene Navigation Handlers with Motion Blur Direction
   const handleNext = useCallback(() => {
+    setTransitionDirection('forward');
+    setTransitionId((prev) => prev + 1);
     setCurrentScene((prev) => (prev + 1) % SCENE_NAMES.length);
     sceneStartTimeRef.current = performance.now();
     setSceneProgress(0);
   }, []);
 
   const handlePrev = useCallback(() => {
+    setTransitionDirection('backward');
+    setTransitionId((prev) => prev + 1);
     setCurrentScene((prev) => (prev - 1 + SCENE_NAMES.length) % SCENE_NAMES.length);
     sceneStartTimeRef.current = performance.now();
     setSceneProgress(0);
   }, []);
 
   const handleSelectScene = useCallback((index: number) => {
-    setCurrentScene(index);
+    setCurrentScene((prev) => {
+      setTransitionDirection(index >= prev ? 'forward' : 'backward');
+      return index;
+    });
+    setTransitionId((prev) => prev + 1);
     sceneStartTimeRef.current = performance.now();
     setSceneProgress(0);
   }, []);
 
   const handleRestartScene = useCallback(() => {
+    setTransitionDirection('forward');
+    setTransitionId((prev) => prev + 1);
     sceneStartTimeRef.current = performance.now();
     setSceneProgress(0);
   }, []);
@@ -192,21 +204,40 @@ export const App: React.FC = () => {
           isInfoOpen={isInfoOpen}
         />
 
-        {/* Dynamic Scene Content Area */}
+        {/* Dynamic Scene Content Area with Motion Blur & Depth Transitions */}
         <div className="flex-1 w-full relative overflow-hidden flex flex-col items-center justify-center">
-          {currentScene === 0 && <Scene1YearOverview stats={stats} />}
-          {currentScene === 1 && <Scene2YearProgress stats={stats} />}
-          {currentScene === 2 && <Scene3DaysRemaining stats={stats} countdown={countdown} />}
-          {currentScene === 3 && <Scene4WeeksRemaining stats={stats} />}
-          {currentScene === 4 && <Scene5WeekendsRemaining stats={stats} />}
-          {currentScene === 5 && <Scene6PerspectiveGrid stats={stats} />}
-          {currentScene === 6 && (
-            <Scene7FinalMessage
-              stats={stats}
-              countdown={countdown}
-              onRestart={() => handleSelectScene(0)}
-            />
-          )}
+          {/* Subtle luminous light sweep during transition */}
+          <div
+            key={`sweep-${transitionId}`}
+            className={`absolute inset-0 pointer-events-none z-20 ${
+              transitionDirection === 'forward'
+                ? 'animate-sweep-forward bg-gradient-to-r from-transparent via-[#ff3344]/15 to-transparent'
+                : 'animate-sweep-backward bg-gradient-to-r from-transparent via-white/10 to-transparent'
+            }`}
+          />
+
+          <div
+            key={`scene-${transitionId}`}
+            className={`w-full h-full flex flex-col items-center justify-center ${
+              transitionDirection === 'forward'
+                ? 'animate-scene-forward'
+                : 'animate-scene-backward'
+            }`}
+          >
+            {currentScene === 0 && <Scene1YearOverview stats={stats} />}
+            {currentScene === 1 && <Scene2YearProgress stats={stats} />}
+            {currentScene === 2 && <Scene3DaysRemaining stats={stats} countdown={countdown} />}
+            {currentScene === 3 && <Scene4WeeksRemaining stats={stats} />}
+            {currentScene === 4 && <Scene5WeekendsRemaining stats={stats} />}
+            {currentScene === 5 && <Scene6PerspectiveGrid stats={stats} />}
+            {currentScene === 6 && (
+              <Scene7FinalMessage
+                stats={stats}
+                countdown={countdown}
+                onRestart={() => handleSelectScene(0)}
+              />
+            )}
+          </div>
         </div>
 
         <SceneNavigation
