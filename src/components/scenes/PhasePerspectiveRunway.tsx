@@ -4,6 +4,7 @@ import { YearStats } from '../../core/dateEngine';
 interface PhasePerspectiveRunwayProps {
   stats: YearStats;
   subPhase: 0 | 1 | 2 | 3;
+  scrollT?: number; // 0 to 1 continuous scrub
   // 0 = "MOST PEOPLE WILL WAIT FOR JANUARY." with 3D runway
   // 1 = "DON'T." particle dots, then stream converges into red TODAY dot
   // 2 = "START" with 2027 JAN 01
@@ -21,7 +22,7 @@ interface Particle {
   alpha: number;
 }
 
-export const PhasePerspectiveRunway: React.FC<PhasePerspectiveRunwayProps> = ({ stats, subPhase }) => {
+export const PhasePerspectiveRunway: React.FC<PhasePerspectiveRunwayProps> = ({ stats, subPhase, scrollT }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const nextYear = stats.year + 1;
 
@@ -170,9 +171,9 @@ export const PhasePerspectiveRunway: React.FC<PhasePerspectiveRunwayProps> = ({ 
       // 4. In subPhase 1: Animate DON'T particles streaming down into the red dot
       if (subPhase === 1 && dontParticles.length > 0) {
         const elapsed = now - startTime;
-        // Phase 1A: 0-1400ms display DON'T text statically
-        // Phase 1B: 1400-3200ms stream down into red dot
-        const streamProgress = Math.max(0, Math.min((elapsed - 1200) / 1600, 1));
+        // Phase 1A: 0-1200ms display DON'T text statically
+        // Phase 1B: 1200-2800ms stream down into red dot
+        const streamProgress = scrollT !== undefined ? scrollT : Math.max(0, Math.min((elapsed - 1200) / 1600, 1));
         const streamEase = Math.pow(streamProgress, 2.8);
 
         dontParticles.forEach((p, idx) => {

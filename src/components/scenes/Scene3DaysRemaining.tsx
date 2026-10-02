@@ -6,6 +6,7 @@ import { DIGIT_PATHS } from '../../utils/digitPaths';
 interface Scene3Props {
   stats: YearStats;
   countdown: CountdownTime;
+  scrollT?: number; // 0 to 1
 }
 
 interface DotPosition {
@@ -16,7 +17,7 @@ interface DotPosition {
   targetY: number;
 }
 
-export const Scene3DaysRemaining: React.FC<Scene3Props> = ({ stats }) => {
+export const Scene3DaysRemaining: React.FC<Scene3Props> = ({ stats, scrollT }) => {
   const daysLeft = stats.daysRemaining;
   const digits = String(daysLeft).split('');
 
@@ -59,7 +60,6 @@ export const Scene3DaysRemaining: React.FC<Scene3Props> = ({ stats }) => {
 
     if (totalLength > 0 && daysLeft > 0) {
       for (let i = 0; i < daysLeft; i++) {
-        // Equidistant sample point along composite stroke
         const targetDist = ((i + 0.5) / daysLeft) * totalLength;
         let accumulated = 0;
 
@@ -85,10 +85,12 @@ export const Scene3DaysRemaining: React.FC<Scene3Props> = ({ stats }) => {
   }, [daysLeft, digits, offsetX, offsetY, totalDigitsWidth]);
 
   // Dot transition animation state
-  const [animationProgress, setAnimationProgress] = useState(0);
+  const [internalProgress, setInternalProgress] = useState(0);
 
   useEffect(() => {
-    setAnimationProgress(0);
+    if (scrollT !== undefined) return;
+
+    setInternalProgress(0);
     const startTime = performance.now();
     const duration = 1200; // ms
 
@@ -96,20 +98,21 @@ export const Scene3DaysRemaining: React.FC<Scene3Props> = ({ stats }) => {
     const tick = (now: number) => {
       const elapsed = now - startTime;
       const progress = Math.min(elapsed / duration, 1);
-      // Cubic easing
       const ease = 1 - Math.pow(1 - progress, 3);
-      setAnimationProgress(ease);
+      setInternalProgress(ease);
 
       if (progress < 1) {
         animId = requestAnimationFrame(tick);
       } else {
-        setAnimationProgress(1);
+        setInternalProgress(1);
       }
     };
 
     animId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(animId);
-  }, [daysLeft]);
+  }, [daysLeft, scrollT]);
+
+  const effectiveProgress = scrollT !== undefined ? scrollT : internalProgress;
 
   // Generate initial scattered/calendar starting positions for each dot
   const dotsWithAnimation = useMemo(() => {
@@ -120,8 +123,8 @@ export const Scene3DaysRemaining: React.FC<Scene3Props> = ({ stats }) => {
       const startX = svgWidth / 2 + Math.cos(angle) * radius;
       const startY = svgHeight / 2 + Math.sin(angle) * (radius * 0.6) - 30;
 
-      const currentX = startX + (dot.targetX - startX) * animationProgress;
-      const currentY = startY + (dot.targetY - startY) * animationProgress;
+      const currentX = startX + (dot.targetX - startX) * effectiveProgress;
+      const currentY = startY + (dot.targetY - startY) * effectiveProgress;
 
       return {
         id: idx,
@@ -129,7 +132,7 @@ export const Scene3DaysRemaining: React.FC<Scene3Props> = ({ stats }) => {
         y: currentY,
       };
     });
-  }, [sampledDots, animationProgress, daysLeft, svgWidth, svgHeight]);
+  }, [sampledDots, effectiveProgress, daysLeft, svgWidth, svgHeight]);
 
   // Date range formatted: e.g. "OCT 02 - DEC 31"
   const startMonthShort = stats.currentMonthName.substring(0, 3).toUpperCase();

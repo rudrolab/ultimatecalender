@@ -2,8 +2,9 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { calculateYearStats, YearStats } from './core/dateEngine';
 import { getCountdownToNewYear, CountdownTime } from './core/countdown';
 import { TopTimelineBar } from './components/TopTimelineBar';
-import { SceneNavigation } from './components/SceneNavigation';
+import { ScrollProgressIndicator } from './components/ScrollProgressIndicator';
 import { InfoModal } from './components/InfoModal';
+import { Play, Pause, ChevronDown, Maximize2, Minimize2, Info, RotateCcw } from 'lucide-react';
 
 // Phase Components matching the exact reference screenshots
 import { PhaseCalendar } from './components/scenes/PhaseCalendar';
@@ -11,43 +12,39 @@ import { Scene3DaysRemaining } from './components/scenes/Scene3DaysRemaining';
 import { PhaseWeeksWeekends } from './components/scenes/PhaseWeeksWeekends';
 import { PhasePerspectiveRunway } from './components/scenes/PhasePerspectiveRunway';
 
-const SCENE_NAMES = [
-  'Year Calendar',
-  '75% Complete',
-  'Q4 Isolated',
-  'Days Left (91)',
-  '13 Weeks',
-  '13 Weekends',
-  'January Horizon',
-  "DON'T Stream",
-  'START 2027',
-  'TODAY Finale',
+const PHASE_NAMES = [
+  '1. Year Matrix',
+  '2. 75% Complete',
+  '3. Q4 Isolated',
+  '4. Days Left (91)',
+  '5. 13 Weeks',
+  '6. 13 Weekends',
+  '7. Wait for January',
+  "8. DON'T Stream",
+  '9. START 2027',
+  '10. TODAY. Finale',
 ];
-
-const SCENE_DURATION_MS = 6000; // 6s per phase in autoplay
 
 export const App: React.FC = () => {
   const [stats, setStats] = useState<YearStats>(() => calculateYearStats());
   const [countdown, setCountdown] = useState<CountdownTime>(() => getCountdownToNewYear());
 
-  const [currentScene, setCurrentScene] = useState<number>(0);
-  const [isPlaying, setIsPlaying] = useState<boolean>(true);
-  const [sceneProgress, setSceneProgress] = useState<number>(0);
-  const [isInfoOpen, setIsInfoOpen] = useState<boolean>(false);
+  // Scroll Progress States
+  const [scrollProgress, setScrollProgress] = useState<number>(0);
+  const targetScrollRef = useRef<number>(0);
+  const currentScrollRef = useRef<number>(0);
+  const scrollVelocityRef = useRef<number>(0);
+
+  // Auto-play / Auto-scroll Mode
+  const [isAutoPlaying, setIsAutoPlaying] = useState<boolean>(false);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+  const [isInfoOpen, setIsInfoOpen] = useState<boolean>(false);
 
-  const [transitionDirection, setTransitionDirection] = useState<'forward' | 'backward'>('forward');
-  const [transitionId, setTransitionId] = useState<number>(0);
-
-  const sceneStartTimeRef = useRef<number>(performance.now());
-  const touchStartXRef = useRef<number | null>(null);
-
-  // Real-time update loop for countdown
+  // System time ticker
   useEffect(() => {
     const updateTime = () => {
       const now = new Date();
       setCountdown(getCountdownToNewYear(now));
-
       if (now.getFullYear() !== stats.year) {
         setStats(calculateYearStats(now));
       }
@@ -58,100 +55,100 @@ export const App: React.FC = () => {
     return () => clearInterval(interval);
   }, [stats.year]);
 
-  // Scene Navigation Handlers
-  const handleNext = useCallback(() => {
-    setTransitionDirection('forward');
-    setTransitionId((prev) => prev + 1);
-    setCurrentScene((prev) => (prev + 1) % SCENE_NAMES.length);
-    sceneStartTimeRef.current = performance.now();
-    setSceneProgress(0);
-  }, []);
-
-  const handlePrev = useCallback(() => {
-    setTransitionDirection('backward');
-    setTransitionId((prev) => prev + 1);
-    setCurrentScene((prev) => (prev - 1 + SCENE_NAMES.length) % SCENE_NAMES.length);
-    sceneStartTimeRef.current = performance.now();
-    setSceneProgress(0);
-  }, []);
-
-  const handleSelectScene = useCallback((index: number) => {
-    setCurrentScene((prev) => {
-      setTransitionDirection(index >= prev ? 'forward' : 'backward');
-      return index;
-    });
-    setTransitionId((prev) => prev + 1);
-    sceneStartTimeRef.current = performance.now();
-    setSceneProgress(0);
-  }, []);
-
-  const handleRestartScene = useCallback(() => {
-    setTransitionDirection('forward');
-    setTransitionId((prev) => prev + 1);
-    sceneStartTimeRef.current = performance.now();
-    setSceneProgress(0);
-  }, []);
-
-  const handleTogglePlay = useCallback(() => {
-    setIsPlaying((prev) => !prev);
-    sceneStartTimeRef.current = performance.now();
-  }, []);
-
-  // Autoplay progression ticker
+  // Window scroll event listener to track user scrolling
   useEffect(() => {
-    if (!isPlaying) {
-      setSceneProgress(0);
-      return;
-    }
-
-    let animationId: number;
-
-    const tick = () => {
-      const elapsed = performance.now() - sceneStartTimeRef.current;
-      const progress = Math.min((elapsed / SCENE_DURATION_MS) * 100, 100);
-      setSceneProgress(progress);
-
-      if (elapsed >= SCENE_DURATION_MS) {
-        handleNext();
-      } else {
-        animationId = requestAnimationFrame(tick);
+    const handleScroll = () => {
+      const scrollable = document.documentElement.scrollHeight - window.innerHeight;
+      if (scrollable > 0) {
+        const raw = window.scrollY / scrollable;
+        targetScrollRef.current = Math.min(Math.max(raw, 0), 1);
       }
     };
 
-    animationId = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(animationId);
-  }, [isPlaying, currentScene, handleNext]);
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  // 60FPS Physics Lerp Loop for butter-smooth camera inertia
+  useEffect(() => {
+    let animId: number;
+
+    const lerpLoop = () => {
+      // Auto-play advances target scroll continuously
+      if (isAutoPlaying) {
+        targetScrollRef.current = (targetScrollRef.current + 0.0008) % 1;
+        const scrollable = document.documentElement.scrollHeight - window.innerHeight;
+        window.scrollTo(0, targetScrollRef.current * scrollable);
+      }
+
+      const diff = targetScrollRef.current - currentScrollRef.current;
+      scrollVelocityRef.current = diff * 0.12;
+      currentScrollRef.current += scrollVelocityRef.current;
+
+      // Keep in bounds
+      const clamped = Math.min(Math.max(currentScrollRef.current, 0), 1);
+      setScrollProgress(clamped);
+
+      animId = requestAnimationFrame(lerpLoop);
+    };
+
+    animId = requestAnimationFrame(lerpLoop);
+    return () => cancelAnimationFrame(animId);
+  }, [isAutoPlaying]);
+
+  // Map progress (0 to 1) to Phase Index (0 to 9) and local sub-phase progress (0 to 1)
+  const totalPhases = PHASE_NAMES.length;
+  const rawPhase = scrollProgress * totalPhases;
+  const currentPhase = Math.min(Math.floor(rawPhase), totalPhases - 1);
+  const subProgress = Math.min(Math.max(rawPhase - currentPhase, 0), 1);
+
+  // Jump to specific phase
+  const handleJumpToPhase = useCallback((phaseIdx: number) => {
+    const scrollable = document.documentElement.scrollHeight - window.innerHeight;
+    const target = (phaseIdx + 0.05) / totalPhases;
+    targetScrollRef.current = target;
+    window.scrollTo({
+      top: target * scrollable,
+      behavior: 'smooth',
+    });
+  }, [totalPhases]);
+
+  // Toggle Auto-play
+  const handleToggleAutoPlay = useCallback(() => {
+    setIsAutoPlaying((prev) => !prev);
+  }, []);
 
   // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const scrollable = document.documentElement.scrollHeight - window.innerHeight;
+
       if (e.code === 'Space') {
         e.preventDefault();
-        handleTogglePlay();
-      } else if (e.code === 'ArrowRight') {
+        handleToggleAutoPlay();
+      } else if (e.code === 'ArrowDown' || e.code === 'ArrowRight') {
         e.preventDefault();
-        handleNext();
-      } else if (e.code === 'ArrowLeft') {
+        handleJumpToPhase(Math.min(currentPhase + 1, totalPhases - 1));
+      } else if (e.code === 'ArrowUp' || e.code === 'ArrowLeft') {
         e.preventDefault();
-        handlePrev();
+        handleJumpToPhase(Math.max(currentPhase - 1, 0));
       } else if (e.code === 'KeyR') {
         e.preventDefault();
-        handleRestartScene();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        targetScrollRef.current = 0;
       } else if (e.code === 'KeyI') {
         e.preventDefault();
         setIsInfoOpen((prev) => !prev);
       } else if (e.code === 'Escape') {
-        if (isInfoOpen) {
-          setIsInfoOpen(false);
-        }
+        if (isInfoOpen) setIsInfoOpen(false);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleNext, handlePrev, handleTogglePlay, handleRestartScene, isInfoOpen]);
+  }, [currentPhase, totalPhases, handleJumpToPhase, handleToggleAutoPlay, isInfoOpen]);
 
-  // Fullscreen toggle handler
+  // Fullscreen toggle
   const handleToggleFullscreen = () => {
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {});
@@ -160,106 +157,162 @@ export const App: React.FC = () => {
     }
   };
 
-  // Touch Swipe for Mobile
-  const handleTouchStart = (e: React.TouchEvent) => {
-    touchStartXRef.current = e.touches[0].clientX;
-  };
-
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    if (touchStartXRef.current === null) return;
-    const touchEndX = e.changedTouches[0].clientX;
-    const diff = touchEndX - touchStartXRef.current;
-    if (Math.abs(diff) > 50) {
-      if (diff > 0) handlePrev();
-      else handleNext();
-    }
-    touchStartXRef.current = null;
-  };
+  // Subtle 3D dynamic tilt angle based on scroll velocity
+  const tiltX = Math.min(Math.max(scrollVelocityRef.current * 40, -4), 4);
 
   return (
-    <div
-      className="w-screen h-screen flex items-center justify-center bg-[#050608] relative overflow-hidden font-mono"
-      onTouchStart={handleTouchStart}
-      onTouchEnd={handleTouchEnd}
-    >
-      {/* Background ambient glow and cinematic grid */}
-      <div className="absolute inset-0 grid-cinematic opacity-30 pointer-events-none" />
-      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-[#ff3344]/5 rounded-full blur-[140px] pointer-events-none" />
+    <div className="relative bg-[#040508] text-white font-mono selection:bg-[#ff3344] selection:text-white">
+      {/* 1. Extended Virtual Scroll Track (1000vh creates deep, responsive 3D scrolling) */}
+      <div className="h-[1000vh] w-full pointer-events-none" />
 
-      {/* 9:16 Vertical Cinematic Phone Frame */}
-      <main className="w-full h-full max-w-[480px] max-h-[920px] sm:h-[96vh] sm:rounded-2xl border border-white/10 bg-[#090a0f] flex flex-col justify-between shadow-[0_0_60px_rgba(0,0,0,0.9)] relative overflow-hidden z-10">
+      {/* 2. Fixed Sticky Viewport holding 3D Cinematic Phone Frame */}
+      <div className="fixed inset-0 flex items-center justify-center pointer-events-none z-10 perspective-[1400px] overflow-hidden">
         
-        {/* Top Timeline Bar (Matching Screenshots) */}
-        <TopTimelineBar stats={stats} isRedDot={currentScene > 0} />
+        {/* Ambient 3D Space Backdrop */}
+        <div className="absolute inset-0 grid-cinematic opacity-25 pointer-events-none" />
+        <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] bg-[#ff3344]/5 rounded-full blur-[160px] pointer-events-none" />
 
-        {/* Dynamic Scene Content Area with Smooth Motion Blur Transitions */}
-        <div className="flex-1 w-full relative overflow-hidden flex flex-col items-center justify-center">
-          {/* Luminous light sweep during scene transitions */}
-          <div
-            key={`sweep-${transitionId}`}
-            className={`absolute inset-0 pointer-events-none z-20 ${
-              transitionDirection === 'forward'
-                ? 'animate-sweep-forward bg-gradient-to-r from-transparent via-[#ff3344]/15 to-transparent'
-                : 'animate-sweep-backward bg-gradient-to-r from-transparent via-white/10 to-transparent'
-            }`}
-          />
+        {/* 9:16 Vertical Cinematic Phone Frame with 3D Depth Dynamics */}
+        <main
+          style={{
+            transform: `rotateX(${tiltX}deg) translateZ(0px)`,
+            transition: 'transform 0.1s ease-out',
+          }}
+          className="w-full h-full max-w-[480px] max-h-[920px] sm:h-[96vh] sm:rounded-2xl border border-white/10 bg-[#090a0f] flex flex-col justify-between shadow-[0_0_80px_rgba(0,0,0,0.95)] relative overflow-hidden pointer-events-auto z-20"
+        >
+          {/* Top Timeline Bar */}
+          <TopTimelineBar stats={stats} isRedDot={currentPhase > 0} />
 
-          <div
-            key={`scene-${transitionId}`}
-            className={`w-full h-full flex flex-col items-center justify-center ${
-              transitionDirection === 'forward'
-                ? 'animate-scene-forward'
-                : 'animate-scene-backward'
-            }`}
-          >
+          {/* Dynamic Scene Content Area */}
+          <div className="flex-1 w-full relative overflow-hidden flex flex-col items-center justify-center">
             {/* Phase 1: Calendar Overview */}
-            {currentScene === 0 && <PhaseCalendar stats={stats} subPhase={0} />}
+            {currentPhase === 0 && <PhaseCalendar stats={stats} subPhase={0} />}
 
             {/* Phase 2: 75% Complete & Q4 Highlight */}
-            {currentScene === 1 && <PhaseCalendar stats={stats} subPhase={1} />}
+            {currentPhase === 1 && <PhaseCalendar stats={stats} subPhase={1} />}
 
             {/* Phase 3: Q4 Isolated */}
-            {currentScene === 2 && <PhaseCalendar stats={stats} subPhase={2} />}
+            {currentPhase === 2 && <PhaseCalendar stats={stats} subPhase={2} />}
 
-            {/* Phase 4: Days Remaining Digits (91) */}
-            {currentScene === 3 && <Scene3DaysRemaining stats={stats} countdown={countdown} />}
+            {/* Phase 4: Days Remaining Digits (91) with continuous scroll scrub */}
+            {currentPhase === 3 && (
+              <Scene3DaysRemaining
+                stats={stats}
+                countdown={countdown}
+                scrollT={subProgress}
+              />
+            )}
 
             {/* Phase 5: That's 13 Weeks */}
-            {currentScene === 4 && <PhaseWeeksWeekends stats={stats} isWeekendsOnly={false} />}
+            {currentPhase === 4 && <PhaseWeeksWeekends stats={stats} isWeekendsOnly={false} />}
 
             {/* Phase 6: Only 13 Weekends */}
-            {currentScene === 5 && <PhaseWeeksWeekends stats={stats} isWeekendsOnly={true} />}
+            {currentPhase === 5 && <PhaseWeeksWeekends stats={stats} isWeekendsOnly={true} />}
 
             {/* Phase 7: Perspective Runway (Wait for January) */}
-            {currentScene === 6 && <PhasePerspectiveRunway stats={stats} subPhase={0} />}
+            {currentPhase === 6 && (
+              <PhasePerspectiveRunway
+                stats={stats}
+                subPhase={0}
+                scrollT={subProgress}
+              />
+            )}
 
             {/* Phase 8: DON'T Particle Stream */}
-            {currentScene === 7 && <PhasePerspectiveRunway stats={stats} subPhase={1} />}
+            {currentPhase === 7 && (
+              <PhasePerspectiveRunway
+                stats={stats}
+                subPhase={1}
+                scrollT={subProgress}
+              />
+            )}
 
             {/* Phase 9: START 2027 */}
-            {currentScene === 8 && <PhasePerspectiveRunway stats={stats} subPhase={2} />}
+            {currentPhase === 8 && (
+              <PhasePerspectiveRunway
+                stats={stats}
+                subPhase={2}
+                scrollT={subProgress}
+              />
+            )}
 
             {/* Phase 10: TODAY. Finale */}
-            {currentScene === 9 && <PhasePerspectiveRunway stats={stats} subPhase={3} />}
+            {currentPhase === 9 && (
+              <PhasePerspectiveRunway
+                stats={stats}
+                subPhase={3}
+              />
+            )}
           </div>
+
+          {/* Bottom HUD Bar */}
+          <div className="w-full flex items-center justify-between border-t border-white/5 bg-[#090a0f]/90 px-4 py-2 text-xs font-mono z-30">
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={handleToggleAutoPlay}
+                title="Toggle Auto-Scroll Playback (Key: SPACE)"
+                className="p-1.5 rounded border border-white/10 hover:border-white/30 text-white transition active:scale-95 flex items-center space-x-1.5"
+              >
+                {isAutoPlaying ? <Pause size={12} /> : <Play size={12} />}
+                <span className="text-[10px] tracking-wider uppercase">
+                  {isAutoPlaying ? 'PAUSE' : 'AUTO-SCROLL'}
+                </span>
+              </button>
+
+              <button
+                onClick={() => handleJumpToPhase(0)}
+                title="Restart from beginning (Key: R)"
+                className="p-1.5 rounded border border-white/10 hover:border-white/30 text-zinc-400 hover:text-white transition"
+              >
+                <RotateCcw size={12} />
+              </button>
+            </div>
+
+            <span className="text-[10px] text-zinc-500 font-mono tracking-widest uppercase">
+              PHASE {currentPhase + 1} / {totalPhases}
+            </span>
+
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => setIsInfoOpen(true)}
+                title="System Statistics (Key: I)"
+                className="p-1.5 rounded border border-white/10 hover:border-white/30 text-zinc-400 hover:text-white transition"
+              >
+                <Info size={12} />
+              </button>
+
+              <button
+                onClick={handleToggleFullscreen}
+                title="Fullscreen (Key: F11)"
+                className="p-1.5 rounded border border-white/10 hover:border-white/30 text-zinc-400 hover:text-white transition"
+              >
+                {isFullscreen ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
+              </button>
+            </div>
+          </div>
+        </main>
+      </div>
+
+      {/* 3. 3D Scroll Progress Indicator (Right Sidebar HUD) */}
+      <ScrollProgressIndicator
+        progress={scrollProgress}
+        phaseIndex={currentPhase}
+        totalPhases={totalPhases}
+        phaseNames={PHASE_NAMES}
+        onJumpToPhase={handleJumpToPhase}
+      />
+
+      {/* 4. Bottom Scroll Prompt Overlay (Fades as user scrolls) */}
+      {scrollProgress < 0.03 && !isAutoPlaying && (
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center space-y-1 pointer-events-none animate-bounce">
+          <span className="text-[10px] font-mono tracking-[0.3em] uppercase text-zinc-400 font-semibold bg-black/60 px-3 py-1 rounded-full border border-white/10 backdrop-blur-md">
+            SCROLL TO TRAVEL THROUGH TIME ↓
+          </span>
+          <ChevronDown size={16} className="text-[#ff3344]" />
         </div>
+      )}
 
-        {/* Bottom Interactive Navigation & Scrubber */}
-        <SceneNavigation
-          currentScene={currentScene}
-          totalScenes={SCENE_NAMES.length}
-          sceneNames={SCENE_NAMES}
-          isPlaying={isPlaying}
-          progressPercent={sceneProgress}
-          onSelectScene={handleSelectScene}
-          onPrev={handlePrev}
-          onNext={handleNext}
-          onTogglePlay={handleTogglePlay}
-          onRestartScene={handleRestartScene}
-        />
-      </main>
-
-      {/* Modal Detailed Stats Panel */}
+      {/* 5. Modal Detailed Stats Panel */}
       <InfoModal
         stats={stats}
         countdown={countdown}
