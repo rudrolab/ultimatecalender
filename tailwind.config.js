@@ -18,6 +18,7 @@ export default {
       fontFamily: {
         mono: ['"JetBrains Mono"', 'Consolas', 'monospace'],
         display: ['"Space Grotesk"', 'sans-serif'],
+        tech: ['"Chakra Petch"', 'sans-serif'],
       },
       animation: {
         'pulse-subtle': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',

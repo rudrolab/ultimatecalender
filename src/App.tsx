@@ -1,60 +1,53 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { calculateYearStats, YearStats } from './core/dateEngine';
 import { getCountdownToNewYear, CountdownTime } from './core/countdown';
-import { Header } from './components/Header';
+import { TopTimelineBar } from './components/TopTimelineBar';
 import { SceneNavigation } from './components/SceneNavigation';
 import { InfoModal } from './components/InfoModal';
-import { Scene1YearOverview } from './components/scenes/Scene1YearOverview';
-import { Scene2YearProgress } from './components/scenes/Scene2YearProgress';
+
+// Phase Components matching the exact reference screenshots
+import { PhaseCalendar } from './components/scenes/PhaseCalendar';
 import { Scene3DaysRemaining } from './components/scenes/Scene3DaysRemaining';
-import { Scene4WeeksRemaining } from './components/scenes/Scene4WeeksRemaining';
-import { Scene5WeekendsRemaining } from './components/scenes/Scene5WeekendsRemaining';
-import { Scene6PerspectiveGrid } from './components/scenes/Scene6PerspectiveGrid';
-import { Scene7FinalMessage } from './components/scenes/Scene7FinalMessage';
+import { PhaseWeeksWeekends } from './components/scenes/PhaseWeeksWeekends';
+import { PhasePerspectiveRunway } from './components/scenes/PhasePerspectiveRunway';
 
 const SCENE_NAMES = [
-  'Calendar Matrix',
-  'Days Remaining',
-  'Annual Ratio',
-  'Weeks Left',
-  'Weekends Left',
-  'Perspective Grid',
-  'Start Today',
+  'Year Calendar',
+  '75% Complete',
+  'Q4 Isolated',
+  'Days Left (91)',
+  '13 Weeks',
+  '13 Weekends',
+  'January Horizon',
+  "DON'T Stream",
+  'START 2027',
+  'TODAY Finale',
 ];
 
-const SCENE_DURATION_MS = 6500; // 6.5s per scene in autoplay
+const SCENE_DURATION_MS = 6000; // 6s per phase in autoplay
 
 export const App: React.FC = () => {
   const [stats, setStats] = useState<YearStats>(() => calculateYearStats());
   const [countdown, setCountdown] = useState<CountdownTime>(() => getCountdownToNewYear());
-  const [timeString, setTimeString] = useState<string>('');
 
   const [currentScene, setCurrentScene] = useState<number>(0);
   const [isPlaying, setIsPlaying] = useState<boolean>(true);
   const [sceneProgress, setSceneProgress] = useState<number>(0);
   const [isInfoOpen, setIsInfoOpen] = useState<boolean>(false);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+
   const [transitionDirection, setTransitionDirection] = useState<'forward' | 'backward'>('forward');
   const [transitionId, setTransitionId] = useState<number>(0);
 
   const sceneStartTimeRef = useRef<number>(performance.now());
   const touchStartXRef = useRef<number | null>(null);
 
-  // Real-time update loop for countdown and time string
+  // Real-time update loop for countdown
   useEffect(() => {
     const updateTime = () => {
       const now = new Date();
-      setTimeString(
-        now.toLocaleTimeString('en-US', {
-          hour12: false,
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit',
-        })
-      );
       setCountdown(getCountdownToNewYear(now));
 
-      // If year changes, recompute full stats
       if (now.getFullYear() !== stats.year) {
         setStats(calculateYearStats(now));
       }
@@ -65,7 +58,7 @@ export const App: React.FC = () => {
     return () => clearInterval(interval);
   }, [stats.year]);
 
-  // Scene Navigation Handlers with Motion Blur Direction
+  // Scene Navigation Handlers
   const handleNext = useCallback(() => {
     setTransitionDirection('forward');
     setTransitionId((prev) => prev + 1);
@@ -185,28 +178,23 @@ export const App: React.FC = () => {
 
   return (
     <div
-      className="w-screen h-screen flex items-center justify-center bg-[#06070a] relative overflow-hidden font-mono"
+      className="w-screen h-screen flex items-center justify-center bg-[#050608] relative overflow-hidden font-mono"
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
       {/* Background ambient glow and cinematic grid */}
-      <div className="absolute inset-0 grid-cinematic opacity-40 pointer-events-none" />
+      <div className="absolute inset-0 grid-cinematic opacity-30 pointer-events-none" />
       <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-[#ff3344]/5 rounded-full blur-[140px] pointer-events-none" />
 
-      {/* 9:16 Vertical Cinematic Phone/Canvas Frame */}
-      <main className="w-full h-full max-w-[500px] max-h-[920px] sm:h-[95vh] sm:rounded-2xl border border-white/10 bg-[#090a0f] flex flex-col justify-between shadow-[0_0_50px_rgba(0,0,0,0.8)] relative overflow-hidden z-10">
-        <Header
-          year={stats.year}
-          timeString={timeString}
-          isFullscreen={isFullscreen}
-          onToggleFullscreen={handleToggleFullscreen}
-          onToggleInfo={() => setIsInfoOpen((prev) => !prev)}
-          isInfoOpen={isInfoOpen}
-        />
+      {/* 9:16 Vertical Cinematic Phone Frame */}
+      <main className="w-full h-full max-w-[480px] max-h-[920px] sm:h-[96vh] sm:rounded-2xl border border-white/10 bg-[#090a0f] flex flex-col justify-between shadow-[0_0_60px_rgba(0,0,0,0.9)] relative overflow-hidden z-10">
+        
+        {/* Top Timeline Bar (Matching Screenshots) */}
+        <TopTimelineBar stats={stats} isRedDot={currentScene > 0} />
 
-        {/* Dynamic Scene Content Area with Motion Blur & Depth Transitions */}
+        {/* Dynamic Scene Content Area with Smooth Motion Blur Transitions */}
         <div className="flex-1 w-full relative overflow-hidden flex flex-col items-center justify-center">
-          {/* Subtle luminous light sweep during transition */}
+          {/* Luminous light sweep during scene transitions */}
           <div
             key={`sweep-${transitionId}`}
             className={`absolute inset-0 pointer-events-none z-20 ${
@@ -224,22 +212,39 @@ export const App: React.FC = () => {
                 : 'animate-scene-backward'
             }`}
           >
-            {currentScene === 0 && <Scene1YearOverview stats={stats} />}
-            {currentScene === 1 && <Scene3DaysRemaining stats={stats} countdown={countdown} />}
-            {currentScene === 2 && <Scene2YearProgress stats={stats} />}
-            {currentScene === 3 && <Scene4WeeksRemaining stats={stats} />}
-            {currentScene === 4 && <Scene5WeekendsRemaining stats={stats} />}
-            {currentScene === 5 && <Scene6PerspectiveGrid stats={stats} />}
-            {currentScene === 6 && (
-              <Scene7FinalMessage
-                stats={stats}
-                countdown={countdown}
-                onRestart={() => handleSelectScene(0)}
-              />
-            )}
+            {/* Phase 1: Calendar Overview */}
+            {currentScene === 0 && <PhaseCalendar stats={stats} subPhase={0} />}
+
+            {/* Phase 2: 75% Complete & Q4 Highlight */}
+            {currentScene === 1 && <PhaseCalendar stats={stats} subPhase={1} />}
+
+            {/* Phase 3: Q4 Isolated */}
+            {currentScene === 2 && <PhaseCalendar stats={stats} subPhase={2} />}
+
+            {/* Phase 4: Days Remaining Digits (91) */}
+            {currentScene === 3 && <Scene3DaysRemaining stats={stats} countdown={countdown} />}
+
+            {/* Phase 5: That's 13 Weeks */}
+            {currentScene === 4 && <PhaseWeeksWeekends stats={stats} isWeekendsOnly={false} />}
+
+            {/* Phase 6: Only 13 Weekends */}
+            {currentScene === 5 && <PhaseWeeksWeekends stats={stats} isWeekendsOnly={true} />}
+
+            {/* Phase 7: Perspective Runway (Wait for January) */}
+            {currentScene === 6 && <PhasePerspectiveRunway stats={stats} subPhase={0} />}
+
+            {/* Phase 8: DON'T Particle Stream */}
+            {currentScene === 7 && <PhasePerspectiveRunway stats={stats} subPhase={1} />}
+
+            {/* Phase 9: START 2027 */}
+            {currentScene === 8 && <PhasePerspectiveRunway stats={stats} subPhase={2} />}
+
+            {/* Phase 10: TODAY. Finale */}
+            {currentScene === 9 && <PhasePerspectiveRunway stats={stats} subPhase={3} />}
           </div>
         </div>
 
+        {/* Bottom Interactive Navigation & Scrubber */}
         <SceneNavigation
           currentScene={currentScene}
           totalScenes={SCENE_NAMES.length}
