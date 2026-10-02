@@ -1,0 +1,37 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    background-color: #08090d;
+    color: #f1f5f9;
+    user-select: none;
+    -webkit-user-select: none;
+    overflow: hidden;
+  }
+}
+
+/* Custom glow and bloom utilities */
+.glow-red {
+  text-shadow: 0 0 20px rgba(255, 51, 68, 0.6), 0 0 40px rgba(255, 51, 68, 0.3);
+}
+
+.glow-box-red {
+  box-shadow: 0 0 15px rgba(255, 51, 68, 0.5), 0 0 30px rgba(255, 51, 68, 0.2);
+}
+
+.glow-white {
+  text-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+}
+
+.glow-dot-current {
+  box-shadow: 0 0 8px #ff3344, 0 0 16px rgba(255, 51, 68, 0.8);
+}
+
+.grid-cinematic {
+  background-image: 
+    linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
