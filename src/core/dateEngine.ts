@@ -137,8 +137,9 @@ export function calculateYearStats(referenceDate: Date = new Date()): YearStats 
   const totalDays = leap ? 366 : 365;
   const dayOfYear = Math.min(Math.max(getDayOfYear(referenceDate), 1), totalDays);
 
-  const daysPassed = dayOfYear;
-  const daysRemaining = Math.max(0, totalDays - dayOfYear);
+  // Exact remaining calendar days (including today through Dec 31)
+  const daysPassed = dayOfYear - 1;
+  const daysRemaining = totalDays - daysPassed;
 
   const percentCompleted = Number(((daysPassed / totalDays) * 100).toFixed(2));
   const percentRemaining = Number((100 - percentCompleted).toFixed(2));
