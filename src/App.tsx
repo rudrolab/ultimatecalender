@@ -13,9 +13,9 @@ import { Scene6PerspectiveGrid } from './components/scenes/Scene6PerspectiveGrid
 import { Scene7FinalMessage } from './components/scenes/Scene7FinalMessage';
 
 const SCENE_NAMES = [
-  'Year Matrix',
-  'Annual Ratio',
+  'Calendar Matrix',
   'Days Remaining',
+  'Annual Ratio',
   'Weeks Left',
   'Weekends Left',
   'Perspective Grid',
@@ -225,8 +225,8 @@ export const App: React.FC = () => {
             }`}
           >
             {currentScene === 0 && <Scene1YearOverview stats={stats} />}
-            {currentScene === 1 && <Scene2YearProgress stats={stats} />}
-            {currentScene === 2 && <Scene3DaysRemaining stats={stats} countdown={countdown} />}
+            {currentScene === 1 && <Scene3DaysRemaining stats={stats} countdown={countdown} />}
+            {currentScene === 2 && <Scene2YearProgress stats={stats} />}
             {currentScene === 3 && <Scene4WeeksRemaining stats={stats} />}
             {currentScene === 4 && <Scene5WeekendsRemaining stats={stats} />}
             {currentScene === 5 && <Scene6PerspectiveGrid stats={stats} />}
