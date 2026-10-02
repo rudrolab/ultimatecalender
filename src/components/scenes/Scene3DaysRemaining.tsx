@@ -7,21 +7,23 @@ interface Scene3Props {
   countdown: CountdownTime;
 }
 
-interface Particle {
+interface DotParticle {
+  id: number;
   startX: number;
   startY: number;
   targetX: number;
   targetY: number;
   currentX: number;
   currentY: number;
-  size: number;
+  curveOffset: number;
+  delay: number;
   color: string;
+  size: number;
 }
 
 export const Scene3DaysRemaining: React.FC<Scene3Props> = ({ stats, countdown }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [morphComplete, setMorphComplete] = useState(false);
-  const [numberCount, setNumberCount] = useState(0);
+  const [animationSettled, setAnimationSettled] = useState(false);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -30,162 +32,227 @@ export const Scene3DaysRemaining: React.FC<Scene3Props> = ({ stats, countdown })
     if (!ctx) return;
 
     let animId: number;
-    const width = (canvas.width = canvas.clientWidth * window.devicePixelRatio);
-    const height = (canvas.height = canvas.clientHeight * window.devicePixelRatio);
-    ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
-
+    const dpr = window.devicePixelRatio || 1;
     const clientW = canvas.clientWidth;
     const clientH = canvas.clientHeight;
+    canvas.width = clientW * dpr;
+    canvas.height = clientH * dpr;
+    ctx.scale(dpr, dpr);
 
     const centerX = clientW / 2;
-    const centerY = clientH / 2;
+    const centerY = clientH * 0.42;
 
-    // Generate remaining dots mapped to an initial calendar grid
-    const dotCount = Math.min(stats.daysRemaining, 160);
-    const cols = 16;
-    const rows = Math.ceil(dotCount / cols);
-    const gridSpacing = 16;
-    const gridStartX = centerX - (cols * gridSpacing) / 2;
-    const gridStartY = centerY - 90;
+    const daysLeft = stats.daysRemaining;
+    const numberStr = String(daysLeft);
 
-    const particles: Particle[] = [];
+    // 1. Generate target points for the number digits via offscreen rasterizer
+    const offscreen = document.createElement('canvas');
+    offscreen.width = clientW;
+    offscreen.height = clientH;
+    const offCtx = offscreen.getContext('2d');
 
-    for (let i = 0; i < dotCount; i++) {
-      const col = i % cols;
-      const row = Math.floor(i / cols);
-      const sx = gridStartX + col * gridSpacing + (Math.random() - 0.5) * 4;
-      const sy = gridStartY + row * gridSpacing + (Math.random() - 0.5) * 4;
+    const targetPoints: { x: number; y: number }[] = [];
 
-      // Target attractor is near the center number
-      const tx = centerX + (Math.random() - 0.5) * 60;
-      const ty = centerY + (Math.random() - 0.5) * 40;
+    if (offCtx) {
+      const fontSize = clientW < 400 ? 110 : 130;
+      offCtx.font = `900 ${fontSize}px "Space Grotesk", "JetBrains Mono", sans-serif`;
+      offCtx.fillStyle = '#ffffff';
+      offCtx.textAlign = 'center';
+      offCtx.textBaseline = 'middle';
+      offCtx.fillText(numberStr, centerX, centerY);
+
+      const imgData = offCtx.getImageData(0, 0, clientW, clientH);
+      const data = imgData.data;
+      const allFilledPoints: { x: number; y: number }[] = [];
+
+      // Scan with step 4 for high density
+      const step = 4;
+      for (let y = 0; y < clientH; y += step) {
+        for (let x = 0; x < clientW; x += step) {
+          const alpha = data[(y * clientW + x) * 4 + 3];
+          if (alpha > 120) {
+            allFilledPoints.push({ x, y });
+          }
+        }
+      }
+
+      if (allFilledPoints.length > 0) {
+        // Evenly sample exactly daysLeft points along the digit strokes
+        for (let i = 0; i < daysLeft; i++) {
+          const idx = Math.floor((i / daysLeft) * allFilledPoints.length);
+          targetPoints.push(allFilledPoints[idx]);
+        }
+      }
+    }
+
+    // Fallback if offscreen canvas points are empty
+    while (targetPoints.length < daysLeft) {
+      targetPoints.push({
+        x: centerX + (Math.random() - 0.5) * 160,
+        y: centerY + (Math.random() - 0.5) * 80,
+      });
+    }
+
+    // 2. Initialize particles starting from a calendar-like distribution
+    const particles: DotParticle[] = [];
+    const gridCols = Math.min(18, Math.max(8, Math.ceil(Math.sqrt(daysLeft * 2))));
+    const gridSpacing = Math.min(22, (clientW - 60) / gridCols);
+    const startGridX = centerX - ((gridCols - 1) * gridSpacing) / 2;
+    const startGridY = centerY - 140;
+
+    for (let i = 0; i < daysLeft; i++) {
+      const col = i % gridCols;
+      const row = Math.floor(i / gridCols);
+
+      const sx = startGridX + col * gridSpacing + (Math.random() - 0.5) * 4;
+      const sy = startGridY + row * gridSpacing + (Math.random() - 0.5) * 4;
+
+      const target = targetPoints[i];
 
       particles.push({
+        id: i,
         startX: sx,
         startY: sy,
-        targetX: tx,
-        targetY: ty,
+        targetX: target.x,
+        targetY: target.y,
         currentX: sx,
         currentY: sy,
-        size: Math.random() * 1.5 + 2.5,
-        color: i % 4 === 0 ? '#ff3344' : '#e2e8f0',
+        curveOffset: (Math.random() - 0.5) * 80,
+        delay: Math.random() * 250, // slight organic stagger
+        color: i % 3 === 0 ? '#ff3344' : '#ffffff',
+        size: clientW < 400 ? 3.2 : 3.8,
       });
     }
 
     const startTime = performance.now();
-    const morphDuration = 850; // ms
+    const duration = 1400; // ms to complete arrangement
 
-    const render = (now: number) => {
-      const elapsed = now - startTime;
-      const progress = Math.min(elapsed / morphDuration, 1);
-      // Ease in cubic for acceleration into center
-      const ease = Math.pow(progress, 2.5);
-
+    const animate = (now: number) => {
       ctx.clearRect(0, 0, clientW, clientH);
 
-      // Draw converging particles
-      if (progress < 1) {
-        particles.forEach((p) => {
-          p.currentX = p.startX + (p.targetX - p.startX) * ease;
-          p.currentY = p.startY + (p.targetY - p.startY) * ease;
+      let allDone = true;
 
-          const alpha = 1 - ease * 0.4;
-          ctx.beginPath();
-          ctx.arc(p.currentX, p.currentY, p.size * (1 - ease * 0.3), 0, Math.PI * 2);
-          ctx.fillStyle = p.color === '#ff3344' ? `rgba(255, 51, 68, ${alpha})` : `rgba(226, 232, 240, ${alpha})`;
-          ctx.shadowColor = '#ff3344';
-          ctx.shadowBlur = 6;
-          ctx.fill();
-        });
+      particles.forEach((p) => {
+        const elapsed = Math.max(0, now - startTime - p.delay);
+        const progress = Math.min(elapsed / duration, 1);
 
-        // Fast number counter during morph
-        setNumberCount(Math.floor(progress * stats.daysRemaining));
-        animId = requestAnimationFrame(render);
-      } else {
-        // Flash at center when all dots fuse
+        if (progress < 1) {
+          allDone = false;
+        }
+
+        // Custom easing with elastic deceleration into place
+        const ease = 1 - Math.pow(1 - progress, 3);
+        const arc = Math.sin(progress * Math.PI) * p.curveOffset * (1 - progress);
+
+        p.currentX = p.startX + (p.targetX - p.startX) * ease + arc;
+        p.currentY = p.startY + (p.targetY - p.startY) * ease;
+
+        // Draw the dot
         ctx.beginPath();
-        ctx.arc(centerX, centerY, 80, 0, Math.PI * 2);
-        const grad = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, 80);
-        grad.addColorStop(0, 'rgba(255, 51, 68, 0.4)');
-        grad.addColorStop(1, 'transparent');
-        ctx.fillStyle = grad;
-        ctx.fill();
+        ctx.arc(p.currentX, p.currentY, p.size, 0, Math.PI * 2);
 
-        setNumberCount(stats.daysRemaining);
-        setMorphComplete(true);
+        // Glow effect
+        if (progress > 0.8) {
+          ctx.shadowColor = '#ff3344';
+          ctx.shadowBlur = 8;
+          ctx.fillStyle = p.color === '#ff3344' ? '#ff3344' : '#ffffff';
+        } else {
+          ctx.shadowColor = 'rgba(255, 51, 68, 0.4)';
+          ctx.shadowBlur = 4;
+          ctx.fillStyle = p.color;
+        }
+
+        ctx.fill();
+      });
+
+      if (!allDone) {
+        animId = requestAnimationFrame(animate);
+      } else {
+        setAnimationSettled(true);
+
+        // Keep a subtle idle breathing pulse for the arranged dots
+        const idleAnimate = (idleTime: number) => {
+          ctx.clearRect(0, 0, clientW, clientH);
+          const pulse = Math.sin(idleTime * 0.003) * 0.4;
+
+          particles.forEach((p, idx) => {
+            const dotPulse = Math.sin(idleTime * 0.003 + idx * 0.1) * 0.4;
+            ctx.beginPath();
+            ctx.arc(p.targetX, p.targetY, p.size + dotPulse, 0, Math.PI * 2);
+            ctx.shadowColor = '#ff3344';
+            ctx.shadowBlur = 8;
+            ctx.fillStyle = p.color;
+            ctx.fill();
+          });
+
+          animId = requestAnimationFrame(idleAnimate);
+        };
+
+        animId = requestAnimationFrame(idleAnimate);
       }
     };
 
-    animId = requestAnimationFrame(render);
+    animId = requestAnimationFrame(animate);
 
     return () => cancelAnimationFrame(animId);
   }, [stats.daysRemaining]);
 
   return (
-    <div className="w-full h-full flex flex-col justify-between py-6 px-4 sm:px-8 select-none relative overflow-hidden">
-      {/* Background Particle Convergence Canvas */}
-      {!morphComplete && (
-        <canvas
-          ref={canvasRef}
-          className="absolute inset-0 w-full h-full pointer-events-none z-0"
-        />
-      )}
-
-      {/* Top indicator */}
+    <div className="w-full h-full flex flex-col justify-between py-4 px-4 sm:px-6 select-none relative overflow-hidden">
+      {/* Top Header Tag */}
       <div className="text-center pt-2 z-10">
         <span className="text-[11px] tracking-[0.3em] uppercase text-zinc-500 font-mono font-medium">
-          METRIC 01 / REMAINING CALENDAR DAYS
+          METRIC 01 / {stats.daysRemaining} REMAINING DOTS ARRANGE INTO:
         </span>
       </div>
 
-      {/* Main Days Left Display */}
-      <div className="flex flex-col items-center justify-center my-auto z-10">
-        <div className="relative">
-          <span className="text-8xl sm:text-9xl font-black tracking-tighter text-white font-display select-none animate-fadeIn">
-            {numberCount}
-          </span>
-          <div className="absolute inset-0 bg-red-500/15 blur-3xl -z-10 rounded-full" />
-        </div>
+      {/* Main Interactive Canvas Area where Dots Physically Form the Number */}
+      <div className="relative w-full h-[320px] sm:h-[350px] my-auto flex items-center justify-center">
+        <canvas ref={canvasRef} className="w-full h-full block" />
 
-        <h2 className="text-xl sm:text-2xl font-bold font-mono tracking-[0.3em] text-[#ff3344] uppercase mt-2 glow-red">
+        {/* Ambient Bloom behind number */}
+        <div className="absolute top-[42%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-32 bg-red-500/10 blur-3xl pointer-events-none -z-10 rounded-full" />
+      </div>
+
+      {/* Details below arranged number */}
+      <div className="flex flex-col items-center justify-center text-center z-10 pb-2">
+        <h2 className="text-xl sm:text-2xl font-bold font-mono tracking-[0.3em] text-[#ff3344] uppercase glow-red">
           DAYS LEFT
         </h2>
 
-        {/* Current Date Display */}
-        <div className="mt-4 py-1.5 px-4 rounded-full border border-white/10 bg-white/[0.02]">
-          <span className="text-xs sm:text-sm font-mono tracking-widest text-zinc-300 uppercase">
+        <div className="mt-2 py-1 px-4 rounded-full border border-white/10 bg-white/[0.02]">
+          <span className="text-xs font-mono tracking-widest text-zinc-300 uppercase">
             {stats.currentDateFormatted}
           </span>
         </div>
 
-        {/* Live Real-time Sub-Day Countdown */}
-        <div className="mt-8 grid grid-cols-3 gap-3 w-full max-w-xs text-center font-mono">
-          <div className="p-2.5 rounded-lg border border-white/5 bg-[#12141c]">
-            <div className="text-lg sm:text-xl font-bold text-zinc-100 tabular-nums">
+        {/* Live Sub-Day Countdown */}
+        <div className="mt-4 grid grid-cols-3 gap-2.5 w-full max-w-xs text-center font-mono">
+          <div className="p-2 rounded-lg border border-white/5 bg-[#12141c]">
+            <div className="text-base font-bold text-zinc-100 tabular-nums">
               {String(countdown.hours).padStart(2, '0')}
             </div>
-            <div className="text-[9px] text-zinc-500 tracking-wider">HOURS</div>
+            <div className="text-[8px] text-zinc-500 tracking-wider">HOURS</div>
           </div>
 
-          <div className="p-2.5 rounded-lg border border-white/5 bg-[#12141c]">
-            <div className="text-lg sm:text-xl font-bold text-zinc-100 tabular-nums">
+          <div className="p-2 rounded-lg border border-white/5 bg-[#12141c]">
+            <div className="text-base font-bold text-zinc-100 tabular-nums">
               {String(countdown.minutes).padStart(2, '0')}
             </div>
-            <div className="text-[9px] text-zinc-500 tracking-wider">MINUTES</div>
+            <div className="text-[8px] text-zinc-500 tracking-wider">MINUTES</div>
           </div>
 
-          <div className="p-2.5 rounded-lg border border-[#ff3344]/30 bg-[#ff3344]/10">
-            <div className="text-lg sm:text-xl font-bold text-[#ff3344] tabular-nums glow-red">
+          <div className="p-2 rounded-lg border border-[#ff3344]/30 bg-[#ff3344]/10">
+            <div className="text-base font-bold text-[#ff3344] tabular-nums glow-red">
               {String(countdown.seconds).padStart(2, '0')}
             </div>
-            <div className="text-[9px] text-[#ff3344]/80 tracking-wider">SECONDS</div>
+            <div className="text-[8px] text-[#ff3344]/80 tracking-wider">SECONDS</div>
           </div>
         </div>
-      </div>
 
-      {/* Bottom text */}
-      <div className="text-center pb-4 text-xs font-mono text-zinc-500 z-10">
-        CONVERTING EVERY DOT INTO CONCRETE REMAINING TIME
+        <div className="mt-3 text-[10px] font-mono text-zinc-500 tracking-wider">
+          EVERY DOT ABOVE IS ONE OF YOUR REMAINING {stats.daysRemaining} DAYS
+        </div>
       </div>
     </div>
   );
